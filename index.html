@@ -1,0 +1,208 @@
+
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ride Report Tracker</title>
+
+<style>
+*{box-sizing:border-box}
+body{
+ margin:0;
+ background:#f3f6f8;
+ color:#17212b;
+ font:15px Arial,sans-serif
+}
+main{
+ max-width:900px;
+ margin:36px auto;
+ padding:28px;
+ background:#fff;
+ border:1px solid #dce3e9;
+ border-radius:14px
+}
+h1{margin:0 0 8px}
+.muted{color:#64717d}
+.stat{
+ font-size:38px;
+ font-weight:700;
+ margin-top:24px
+}
+.row{
+ display:flex;
+ gap:12px;
+ flex-wrap:wrap;
+ margin:22px 0
+}
+button{
+ background:#176b5b;
+ color:#fff;
+ border:0;
+ border-radius:8px;
+ padding:12px 16px;
+ font-weight:600;
+ cursor:pointer
+}
+button.secondary{background:#465563}
+input{
+ padding:11px;
+ border:1px solid #cbd5df;
+ border-radius:8px;
+ max-width:100%
+}
+#msg{
+ margin-top:12px;
+ white-space:pre-wrap
+}
+.notice{
+ padding:12px;
+ border:1px solid #e4c77b;
+ background:#fff8e5;
+ border-radius:8px;
+ margin-top:18px
+}
+</style>
+</head>
+
+<body>
+<main>
+
+<h1>Ride Report Tracker</h1>
+
+<p class="muted">
+CSV intake · PostgreSQL storage · Chronological Excel tracker
+</p>
+
+<div class="notice">
+<strong>Access note:</strong>
+This tracker currently has no login. Anyone who can access its
+public URL may upload reports and download the tracker.
+Do not upload confidential or company-restricted data.
+</div>
+
+<div class="stat" id="count">—</div>
+<div class="muted">Ride reports stored</div>
+
+<div class="row">
+<input id="csv" type="file" accept=".csv,text/csv">
+
+<button id="upload">Import CSV</button>
+
+<button id="download" class="secondary">
+Download Excel tracker
+</button>
+</div>
+
+<div id="msg" class="muted">
+Connecting to tracker API…
+</div>
+
+</main>
+
+<script src="./config.js"></script>
+
+<script>
+const API = (window.API_BASE_URL || "").replace(/\/$/, "");
+
+const msg = (s) => {
+ document.querySelector("#msg").textContent = s;
+};
+
+async function call(path, options = {}) {
+ return fetch(API + path, options);
+}
+
+async function refresh() {
+ try {
+  const r = await call("/api/status");
+
+  if (!r.ok) {
+   throw Error("API error " + r.status);
+  }
+
+  const j = await r.json();
+
+  document.querySelector("#count").textContent =
+   j.records ?? "—";
+
+  msg("Connected to tracker API.");
+
+ } catch (e) {
+  msg(e.message + " — Check config.js and Render service.");
+ }
+}
+
+document.querySelector("#upload").onclick = async () => {
+
+ const f = document.querySelector("#csv").files[0];
+
+ if (!f) {
+  msg("Choose a CSV file first.");
+  return;
+ }
+
+ const fd = new FormData();
+ fd.append("file", f);
+
+ msg("Uploading…");
+
+ try {
+  const r = await call("/api/import", {
+   method: "POST",
+   body: fd
+  });
+
+  const j = await r.json();
+
+  if (!r.ok) {
+   throw Error(j.error || "Import failed");
+  }
+
+  msg(
+   j.message +
+   (j.drive_id_conflict
+    ? " — Warning: another report has the same Drive ID."
+    : "")
+  );
+
+  await refresh();
+
+ } catch (e) {
+  msg(e.message);
+ }
+};
+
+document.querySelector("#download").onclick = async () => {
+
+ try {
+  const r = await call("/download");
+
+  if (!r.ok) {
+   throw Error("Download failed: " + r.status);
+  }
+
+  const blob = await r.blob();
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "Daily_Ride_Report_Tracker.xlsx";
+  a.click();
+
+  URL.revokeObjectURL(url);
+
+ } catch (e) {
+  msg(e.message);
+ }
+};
+
+if (!API || API.includes("YOUR-RENDER-SERVICE")) {
+ msg("Set your actual Render API URL in config.js.");
+} else {
+ refresh();
+}
+</script>
+
+</body>
+</html>
