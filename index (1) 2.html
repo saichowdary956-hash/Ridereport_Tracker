@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ride Report Tracker</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f3f6f8;color:#17212b;font:15px Arial,sans-serif}
+main{max-width:900px;margin:36px auto;padding:28px;background:#fff;border:1px solid #dce3e9;border-radius:14px}
+h1{margin:0 0 8px}.muted{color:#64717d}.stat{font-size:38px;font-weight:700;margin-top:24px}
+.row{display:flex;gap:12px;flex-wrap:wrap;margin:22px 0}button,a{background:#176b5b;color:#fff;border:0;border-radius:8px;padding:12px 16px;text-decoration:none;font-weight:600;cursor:pointer}
+button.secondary{background:#465563}input{padding:11px;border:1px solid #cbd5df;border-radius:8px;max-width:100%}
+#msg{margin-top:12px;white-space:pre-wrap}.panel{padding:16px;border:1px solid #dce3e9;border-radius:10px;margin-top:18px}
+label{display:block;font-weight:600;margin:10px 0 6px}input[type=text],input[type=password]{width:100%;max-width:420px}
+small{color:#64717d}.hidden{display:none}
+</style>
+</head>
+<body>
+<main>
+<h1>Ride Report Tracker</h1>
+<p class="muted">CSV intake · PostgreSQL storage · chronological Excel tracker</p>
+<section id="login" class="panel">
+<h3>Sign in</h3>
+<label for="username">Username</label><input id="username" type="text" autocomplete="username">
+<label for="password">Password</label><input id="password" type="password" autocomplete="current-password">
+<div class="row"><button id="signin">Sign in</button></div>
+<small>Credentials are sent over HTTPS to the API and held only in this browser tab. Do not share them.</small>
+</section>
+<section id="app" class="hidden">
+<div class="stat" id="count">—</div><div class="muted">Ride reports stored</div>
+<div class="row"><input id="csv" type="file" accept=".csv,text/csv"><button id="upload">Import CSV</button><button id="download" class="secondary">Download Excel tracker</button><button id="logout" class="secondary">Sign out</button></div>
+</section>
+<div id="msg" class="muted"></div>
+</main>
+<script src="./config.js"></script>
+<script>
+const API=(window.API_BASE_URL||"").replace(/\/$/,"");
+let authHeader="";
+const msg=(s)=>document.querySelector("#msg").textContent=s;
+function showApp(yes){document.querySelector("#login").classList.toggle("hidden",yes);document.querySelector("#app").classList.toggle("hidden",!yes)}
+async function call(path,options={}){return fetch(API+path,{...options,headers:{...(options.headers||{}),Authorization:authHeader}})}
+async function refresh(){try{const r=await call("/api/status");if(r.status===401)throw Error("Sign-in failed. Check your username and password.");if(!r.ok)throw Error("API error "+r.status);const j=await r.json();document.querySelector("#count").textContent=j.records??"—";msg("Connected to tracker API.")}catch(e){msg(e.message)}}
+document.querySelector("#signin").onclick=async()=>{if(!API){msg("Set API_BASE_URL in config.js first.");return}const u=document.querySelector("#username").value,p=document.querySelector("#password").value;if(!u||!p){msg("Enter both username and password.");return}authHeader="Basic "+btoa(unescape(encodeURIComponent(u+":"+p)));try{const r=await call("/api/status");if(!r.ok){authHeader="";throw Error("Login failed. Verify credentials and API URL.")}showApp(true);await refresh()}catch(e){msg(e.message)}};
+document.querySelector("#upload").onclick=async()=>{const f=document.querySelector("#csv").files[0];if(!f){msg("Choose a CSV file first.");return}const fd=new FormData();fd.append("file",f);msg("Uploading…");try{const r=await call("/api/import",{method:"POST",body:fd});const j=await r.json();if(!r.ok)throw Error(j.error||"Import failed");msg(j.message+(j.drive_id_conflict?" — Warning: another report has the same Drive ID.":""));await refresh()}catch(e){msg(e.message)}};
+document.querySelector("#download").onclick=async()=>{try{const r=await call("/download");if(!r.ok)throw Error("Download failed. Please sign in again.");const blob=await r.blob();const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="Daily_Ride_Report_Tracker.xlsx";a.click();URL.revokeObjectURL(url)}catch(e){msg(e.message)}};
+document.querySelector("#logout").onclick=()=>{authHeader="";showApp(false);document.querySelector("#password").value="";msg("Signed out.")};
+</script>
+</body></html>
